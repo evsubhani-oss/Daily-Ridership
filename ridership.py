@@ -1,242 +1,181 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Jun  1 14:33:37 2026
-
-@author: Subhani
-"""
-
 import streamlit as st
 from datetime import datetime, timedelta
 import re
 
-# --- Setup Page ---
-st.set_page_config(page_title="Transport Stats Generator", layout="wide")
-st.title("Transport Stats (Web Version with Converter)")
+# --- Page Configuration ---
+st.set_page_config(page_title="Transport Stats", layout="wide")
 
-# --- Helper Functions ---
-def get_val(val_str, is_float=False):
-    """Safely gets number from string input."""
-    raw = val_str.replace(",", "").strip()
-    try:
-        if is_float:
-            return float(raw)
-        return int(float(raw))
-    except ValueError:
-        return 0
+st.title("Transport Stats (Compact Version with Converter)")
 
+# --- Formatting Helper ---
 def fmt(number):
-    """Formats number with commas."""
-    return f"{number:,.0f}" if isinstance(number, int) or number.is_integer() else f"{number:,.2f}"
+    """Format with commas."""
+    if isinstance(number, int) or number.is_integer():
+        return f"{number:,.0f}"
+    return f"{number:,.2f}"
 
-# --- Initialize Session State for Outputs ---
-if "main_output" not in st.session_state:
-    st.session_state.main_output = ""
-if "short_output" not in st.session_state:
-    st.session_state.short_output = ""
-if "converter_output" not in st.session_state:
-    st.session_state.converter_output = ""
-
-# --- ROW 1: Date & Day ---
-st.subheader("Date Selection")
+# ================= ROW 1: DATE & DAY =================
+st.header("Date Selection")
 yesterday = datetime.now() - timedelta(days=1)
-yesterday_str = yesterday.strftime("%Y-%m-%d")
-day_str = yesterday.strftime("%A")
 
-top_col1, top_col2, _ = st.columns([1, 1, 4])
-with top_col1:
-    date_val = st.text_input("Date (YYYY-MM-DD):", value=yesterday_str)
-with top_col2:
-    # Auto-update day logic if date is valid
-    try:
-        dt = datetime.strptime(date_val, "%Y-%m-%d")
-        day_str = dt.strftime("%A")
-    except ValueError:
-        pass
-    day_val = st.text_input("Day:", value=day_str)
+col_date, col_day = st.columns([1, 3])
+with col_date:
+    selected_date = st.date_input("Date", value=yesterday)
+with col_day:
+    day_str = selected_date.strftime("%A")
+    st.write("") # Spacing
+    st.write(f"**Day:** {day_str}")
 
-st.markdown("---")
+date_val = selected_date.strftime("%Y-%m-%d")
 
-# --- ROW 2: Data Inputs (3 Columns) ---
+# ================= ROW 2: DATA INPUTS (3 COLUMNS) =================
+st.header("Data Inputs")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.markdown("**Daily Boarding**")
-    ev_daily_count = st.text_input("Daily Count:", key="ev_count")
-    ev_daily_amount = st.text_input("Daily Amount:", key="ev_amt")
-    
-    st.markdown("**Daily Bus Count**")
-    total_bus = st.text_input("Total Bus:", value="180", key="tot_bus")
-    working_bus = st.text_input("Working Buses:", key="work_bus")
-    
-    st.markdown("**MST Card Charge**")
-    mst_count = st.text_input("Charge Count:", key="mst_c")
-    mst_amount = st.text_input("Charge Amount:", key="mst_amt")
-    mst_balance = st.text_input("Balance Amount:", value="0.00", key="mst_bal")
+    st.subheader("Daily Boarding")
+    ev_daily_count = st.number_input("Daily Count", min_value=0, value=0, step=1)
+    ev_daily_amount = st.number_input("Daily Amount", min_value=0.0, value=0.0, step=0.01)
+
+    st.subheader("Daily Bus Count")
+    total_bus = st.number_input("Total Bus", min_value=0, value=180, step=1)
+    working_bus = st.number_input("Working Buses", min_value=0, value=0, step=1)
+
+    st.subheader("MST Card Charge")
+    mst_count = st.number_input("Charge Count", min_value=0, value=0, step=1)
+    mst_amount = st.number_input("Charge Amount", min_value=0.0, value=0.0, step=0.01)
+    mst_balance = st.number_input("Balance Amount", min_value=0.0, value=0.0, step=0.01)
 
 with col2:
-    st.markdown("**Daily Card Charge**")
-    card_chg_count = st.text_input("Charge Count:", key="card_c")
-    card_chg_amount = st.text_input("Charge Amount:", key="card_amt")
-    
-    st.markdown("**Daily Ticket Sales**")
-    ticket_sale_count = st.text_input("Ticket Sale Count:", key="tkt_c")
-    ticket_sale_amount = st.text_input("Ticket Sale Amount:", key="tkt_amt")
-    
-    st.markdown("**QR Mobile**")
-    qr_count = st.text_input("Total QR Tickets:", key="qr_c")
+    st.subheader("Daily Card Charge")
+    card_chg_count = st.number_input("Charge Count (Card)", min_value=0, value=0, step=1)
+    card_chg_amount = st.number_input("Charge Amount (Card)", min_value=0.0, value=0.0, step=0.01)
+
+    st.subheader("Daily Ticket Sales")
+    ticket_sale_count = st.number_input("Ticket Sale Count", min_value=0, value=0, step=1)
+    ticket_sale_amount = st.number_input("Ticket Sale Amount", min_value=0.0, value=0.0, step=0.01)
+
+    st.subheader("QR Mobile")
+    qr_count = st.number_input("Total QR Tickets", min_value=0, value=0, step=1)
 
 with col3:
-    st.markdown("**Orange Line Metro**")
-    olm_riders = st.text_input("Total Riders:", key="olm_riders")
-    olm_revenue = st.text_input("Total Revenue:", key="olm_rev")
-    olm_sales = st.text_input("Total Sales:", key="olm_sales")
-    
-    st.markdown("---")
-    
-    # Collect all inputs in a dictionary for validation
-    inputs_dict = {
-        "Daily Count": ev_daily_count, "Daily Amount": ev_daily_amount,
-        "Total Bus": total_bus, "Working Buses": working_bus,
-        "MST Charge Count": mst_count, "MST Charge Amount": mst_amount, "MST Balance": mst_balance,
-        "Card Charge Count": card_chg_count, "Card Charge Amount": card_chg_amount,
-        "Ticket Sale Count": ticket_sale_count, "Ticket Sale Amount": ticket_sale_amount,
-        "QR Tickets": qr_count,
-        "OLM Riders": olm_riders, "OLM Revenue": olm_revenue, "OLM Sales": olm_sales
-    }
-    
-    def check_empty_fields():
-        empty = [k for k, v in inputs_dict.items() if not v.strip()]
-        if empty:
-            st.warning(f"Missing Values for: {', '.join(empty)}.\nPlease enter 0 if there is no data.")
-            return False
-        return True
+    st.subheader("Orange Line Metro")
+    olm_riders = st.number_input("Total Riders", min_value=0, value=0, step=1)
+    olm_revenue = st.number_input("Total Revenue", min_value=0.0, value=0.0, step=0.01)
+    olm_sales = st.number_input("Total Sales", min_value=0.0, value=0.0, step=0.01)
 
-    def calculate_data():
-        d = {}
-        d['ev_daily_count'] = get_val(ev_daily_count)
-        d['ev_daily_amount'] = get_val(ev_daily_amount, True)
-        d['total_bus'] = get_val(total_bus)
-        d['working_bus'] = get_val(working_bus)
-        d['mst_count'] = get_val(mst_count)
-        d['mst_amount'] = get_val(mst_amount, True)
-        d['mst_balance'] = get_val(mst_balance, True)
-        d['card_chg_count'] = get_val(card_chg_count)
-        d['card_chg_amount'] = get_val(card_chg_amount, True)
-        d['ticket_sale_count'] = get_val(ticket_sale_count)
-        d['ticket_sale_amount'] = get_val(ticket_sale_amount, True)
-        d['qr_count'] = get_val(qr_count)
-        d['olm_riders'] = get_val(olm_riders)
-        d['olm_revenue'] = get_val(olm_revenue, True)
-        d['olm_sales'] = get_val(olm_sales, True)
+st.divider()
 
-        d['qr_amount'] = d['qr_count'] * 50
-        d['grand_total_riders'] = d['olm_riders'] + d['qr_count'] + d['ticket_sale_count']
-        d['grand_total_sales'] = d['olm_sales'] + d['qr_amount'] + d['ticket_sale_amount']
-        d['feeder_routes_riders'] = d['qr_count'] + d['ticket_sale_count']
-        return d
+# ================= CALCULATIONS =================
+qr_amount = qr_count * 50
+grand_total_riders = olm_riders + qr_count + ticket_sale_count
+grand_total_sales = olm_sales + qr_amount + ticket_sale_amount
+feeder_routes_riders = qr_count + ticket_sale_count
 
-    # Buttons
-    if st.button("GENERATE MAIN TEMPLATE", use_container_width=True):
-        if check_empty_fields():
-            d = calculate_data()
-            st.session_state.main_output = f"""*General Statistics - EV & HEV Buses*
+# ================= REPORTS =================
+st.header("Generated Reports")
+st.info("Hover over the top right corner of the text boxes below and click the 'Copy' icon to copy the reports to your clipboard.")
+
+tab1, tab2 = st.tabs(["Main Template", "Short Summary"])
+
+with tab1:
+    main_template = f"""*General Statistics - EV & HEV Buses*
 Date: {date_val}
-Day: {day_val}
+Day: {day_str}
 *Daily Boarding*
-Daily Count: {fmt(d['ev_daily_count'])}
-Daily Amount: {fmt(d['ev_daily_amount'])}
+Daily Count: {fmt(ev_daily_count)}
+Daily Amount: {fmt(ev_daily_amount)}
 *Daily Bus Count*
-Total Bus: {fmt(d['total_bus'])}
-Working Buses: {fmt(d['working_bus'])}
+Total Bus: {fmt(total_bus)}
+Working Buses: {fmt(working_bus)}
 *Daily MST Card Charge Info*
-MST Card Charge Count: {fmt(d['mst_count'])}
-MST Card Charge Amount: {fmt(d['mst_amount'])}
-MST Card Balance Amount: {fmt(d['mst_balance'])}
+MST Card Charge Count: {fmt(mst_count)}
+MST Card Charge Amount: {fmt(mst_amount)}
+MST Card Balance Amount: {fmt(mst_balance)}
 *Daily Card Charge*
-Daily Card Charge Count: {fmt(d['card_chg_count'])}
-Daily Card Charge Amount: {fmt(d['card_chg_amount'])}
+Daily Card Charge Count: {fmt(card_chg_count)}
+Daily Card Charge Amount: {fmt(card_chg_amount)}
 *Daily Ticket Sales*
-Total Tickets Sale Count: {fmt(d['ticket_sale_count'])}
-Total Tickets Sale Amount: {fmt(d['ticket_sale_amount'])}
+Total Tickets Sale Count: {fmt(ticket_sale_count)}
+Total Tickets Sale Amount: {fmt(ticket_sale_amount)}
 *QR Mobile*
-Total QR Tickets: {fmt(d['qr_count'])}
-Total QR Tickets Amount: {fmt(d['qr_amount'])}
+Total QR Tickets: {fmt(qr_count)}
+Total QR Tickets Amount: {fmt(qr_amount)}
 *General Statistics - Orange Line Metro*
 Date: {date_val}
-Day: {day_val}
-Total Riders: {fmt(d['olm_riders'])}
-Total Revenue: {fmt(d['olm_revenue'])}
-Total Sales: {fmt(d['olm_sales'])}
+Day: {day_str}
+Total Riders: {fmt(olm_riders)}
+Total Revenue: {fmt(olm_revenue)}
+Total Sales: {fmt(olm_sales)}
 *Grand Total*
-Total Ridership Count: {fmt(d['grand_total_riders'])}
-Total Sale Amount: {fmt(d['grand_total_sales'])}"""
+Total Ridership Count: {fmt(grand_total_riders)}
+Total Sale Amount: {fmt(grand_total_sales)}"""
 
-    if st.button("GENERATE SHORT SUMMARY", use_container_width=True):
-        if check_empty_fields():
-            d = calculate_data()
-            st.session_state.short_output = f"""*Ridership Details*
+    st.code(main_template, language=None)
+
+with tab2:
+    summary_template = f"""*Ridership Details*
 Date: {date_val}
+Day: {day_str} 
 
-*Orange Line Metro* = {fmt(d['olm_riders'])}
-*Feeder Routes* = {fmt(d['feeder_routes_riders'])}
+*Orange Line Metro* = {fmt(olm_riders)}
+*Feeder Routes* = {fmt(feeder_routes_riders)}
 
-*Total Ridership* = {fmt(d['grand_total_riders'])}
-*Total Sale Amount* = {fmt(d['grand_total_sales'])}"""
+*Total Ridership* = {fmt(grand_total_riders)}
+*Total Sale Amount* = {fmt(grand_total_sales)}"""
 
-    if st.session_state.main_output:
-        st.markdown("**Main Output:** *(Hover over box & click top-right icon to copy)*")
-        st.code(st.session_state.main_output, language="markdown")
+    st.code(summary_template, language=None)
 
-    if st.session_state.short_output:
-        st.markdown("**Short Output:** *(Hover over box & click top-right icon to copy)*")
-        st.code(st.session_state.short_output, language="markdown")
+st.divider()
 
-st.markdown("---")
+# ================= ROW 3: QUICK CONVERTER =================
+st.header("Quick Converter")
+st.write("Paste your Main Format text here to extract and generate a Short Summary.")
 
-# --- ROW 3: Quick Converter ---
-st.subheader("Quick Converter (Paste Main Format Here to Get Short Summary)")
-paste_text = st.text_area("Paste text generated from Main Template here:", height=150)
+pasted_text = st.text_area("Paste Main Report Here", height=150)
 
-if st.button("CONVERT TO SHORT SUMMARY"):
-    if not paste_text.strip():
+if st.button("Convert to Short Summary", type="primary"):
+    if not pasted_text.strip():
         st.warning("Please paste the Main Format text into the box first.")
     else:
         try:
-            date_match = re.search(r"Date:\s*(.+)", paste_text)
-            olm_match = re.search(r"Total Riders:\s*([\d,]+)", paste_text)
-            total_riders_match = re.search(r"Total Ridership Count:\s*([\d,]+)", paste_text)
-            total_sales_match = re.search(r"Total Sale Amount:\s*([\d,\.]+)", paste_text)
-            
-            if not (date_match and olm_match and total_riders_match and total_sales_match):
-                raise ValueError("Missing fields")
+            # Use Regular Expressions to find the needed numbers
+            date_match = re.search(r"Date:\s*(.+)", pasted_text)
+            day_match = re.search(r"Day:\s*(.+)", pasted_text)
+            olm_match = re.search(r"Total Riders:\s*([\d,]+)", pasted_text)
+            total_riders_match = re.search(r"Total Ridership Count:\s*([\d,]+)", pasted_text)
+            total_sales_match = re.search(r"Total Sale Amount:\s*([\d,\.]+)", pasted_text)
 
-            # Extract raw strings
+            if not (date_match and olm_match and total_riders_match and total_sales_match and day_match):
+                raise ValueError("Missing required fields in pasted text.")
+
+            # Extract the raw strings
             c_date_val = date_match.group(1).strip()
-            olm_str = olm_match.group(1)
-            total_riders_str = total_riders_match.group(1)
-            total_sales_str = total_sales_match.group(1)
+            c_day_val = day_match.group(1).strip()
+            c_olm_str = olm_match.group(1)
+            c_total_riders_str = total_riders_match.group(1)
+            c_total_sales_str = total_sales_match.group(1)
 
-            # Convert riders to integers for math
-            c_olm_riders = int(olm_str.replace(",", ""))
-            c_total_riders = int(total_riders_str.replace(",", ""))
+            # Convert riders to integers to calculate the feeder routes
+            c_olm_riders = int(c_olm_str.replace(",", ""))
+            c_total_riders = int(c_total_riders_str.replace(",", ""))
             
             # Feeder Routes = Grand Total Ridership - Orange Line Riders
             c_feeder_routes = c_total_riders - c_olm_riders
 
-            # Output Template
-            st.session_state.converter_output = f"""*Ridership Details*
+            # Build the new short format
+            converted_summary = f"""*Ridership Details*
 Date: {c_date_val}
+Day: {c_day_val}
 
 *Orange Line Metro* = {c_olm_riders:,}
 *Feeder Routes* = {c_feeder_routes:,}
 
 *Total Ridership* = {c_total_riders:,}
-*Total Sale Amount* = {total_sales_str}"""
-            
-            st.success("Successfully converted!")
-        except Exception as e:
-            st.error("Could not parse text. Ensure you pasted the exact Main Template format.")
+*Total Sale Amount* = {c_total_sales_str}"""
 
-if st.session_state.converter_output:
-    st.markdown("**Converted Short Summary:** *(Hover over box & click top-right icon to copy)*")
-    st.code(st.session_state.converter_output, language="markdown")
+            st.success("Converted successfully! Use the copy icon in the top right of the box below.")
+            st.code(converted_summary, language=None)
+
+        except Exception as e:
+            st.error("Parse Error: Could not understand the pasted text. Please make sure you are pasting the EXACT format generated by the Main Template.")
