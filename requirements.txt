@@ -1,2 +1,8 @@
-
+streamlit
+pandas
+openpyxl
+io
+os
+base64 
+mimetypes
 streamlit
