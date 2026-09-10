@@ -1,181 +1,310 @@
 import streamlit as st
-from datetime import datetime, timedelta
-import re
+import pandas as pd
+import openpyxl
+import io
+import os
+import base64      # <-- NEW IMPORT
+import mimetypes   # <-- NEW IMPORT
 
-# --- Page Configuration ---
-st.set_page_config(page_title="Transport Stats", layout="wide")
+# --- GLOBAL HELPER FUNCTIONS ---
+def safe_write(sheet, r, c, val):
+    """Safely writes a value to a cell, skipping merged or text-filled cells."""
+    cell = sheet.cell(row=r, column=c)
+    if type(cell).__name__ == 'MergedCell':
+        return
+    if isinstance(cell.value, str) and cell.value.strip() != "":
+        return
+    cell.value = val
 
-st.title("Transport Stats (Compact Version with Converter)")
+def set_background(image_file):
+    """Encodes an image/GIF and injects it as a CSS background."""
+    # Guess the file type (e.g., image/gif, image/jpeg, image/png)
+    mime_type, _ = mimetypes.guess_type(image_file)
+    if mime_type is None:
+        mime_type = "image/png" # Fallback
+        
+    try:
+        with open(image_file, "rb") as f:
+            data = f.read()
+        encoded = base64.b64encode(data).decode()
+        
+        # CSS to inject the background into the main Streamlit container (.stApp)
+        css = f"""
+        <style>
+        .stApp {{
+            background-image: url("data:{mime_type};base64,{encoded}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }}
+        </style>
+        """
+        st.markdown(css, unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.warning(f"Background image '{image_file}' not found.")
 
-# --- Formatting Helper ---
-def fmt(number):
-    """Format with commas."""
-    if isinstance(number, int) or number.is_integer():
-        return f"{number:,.0f}"
-    return f"{number:,.2f}"
+# --- APP SETUP ---
+st.set_page_config(layout="wide", page_title="Transit Operations Report Generator")
 
-# ================= ROW 1: DATE & DAY =================
-st.header("Date Selection")
-yesterday = datetime.now() - timedelta(days=1)
+# --- CALL THE BACKGROUND FUNCTION HERE ---
+# Place your image or gif in the same folder as this script.
+# Uncomment the line below and change "your_background.gif" to your actual file name.
+set_background("your_gif.gif") 
 
-col_date, col_day = st.columns([1, 3])
-with col_date:
-    selected_date = st.date_input("Date", value=yesterday)
-with col_day:
-    day_str = selected_date.strftime("%A")
-    st.write("") # Spacing
-    st.write(f"**Day:** {day_str}")
+st.title("Transit Operations Report Generator")
 
-date_val = selected_date.strftime("%Y-%m-%d")
+# ... [The rest of your code remains exactly the same below this point] ...
+# --- SIDEBAR NAVIGATION ---
 
-# ================= ROW 2: DATA INPUTS (3 COLUMNS) =================
-st.header("Data Inputs")
-col1, col2, col3 = st.columns(3)
+st.sidebar.header("Navigation")
+app_mode = st.sidebar.radio(
+    "Select Tool to Run:",
+    ["Kentkart Validation Report","Station AFC Report"]
+)
+st.sidebar.divider()
 
-with col1:
-    st.subheader("Daily Boarding")
-    ev_daily_count = st.number_input("Daily Count", min_value=0, value=0, step=1)
-    ev_daily_amount = st.number_input("Daily Amount", min_value=0.0, value=0.0, step=0.01)
+# ==========================================
+# TOOL 1: STATION AFC REPORT
+# ==========================================
+if app_mode == "Station AFC Report":
+    st.subheader("Hourly Station Ticket Report - Template Filler")
+    st.write("Upload your raw ticket data. The app will automatically use the default 'TAP Template.xlsx'.")
 
-    st.subheader("Daily Bus Count")
-    total_bus = st.number_input("Total Bus", min_value=0, value=180, step=1)
-    working_bus = st.number_input("Working Buses", min_value=0, value=0, step=1)
+    st.sidebar.header("AFC Report Settings")
+    time_range = st.sidebar.slider(
+        "Select Reporting Hours", 
+        min_value=0, max_value=24, value=(6, 22), format="%d:00", key="afc_slider"
+    )
+    start_hr, end_hr = time_range
 
-    st.subheader("MST Card Charge")
-    mst_count = st.number_input("Charge Count", min_value=0, value=0, step=1)
-    mst_amount = st.number_input("Charge Amount", min_value=0.0, value=0.0, step=0.01)
-    mst_balance = st.number_input("Balance Amount", min_value=0.0, value=0.0, step=0.01)
+    TARGET_STATIONS = [
+        "Faiz Ahmad Faiz", "G-13", "Golra More", 
+        "N-5", "NHA", "NUST", "Police Foundation", "G-10"
+    ]
 
-with col2:
-    st.subheader("Daily Card Charge")
-    card_chg_count = st.number_input("Charge Count (Card)", min_value=0, value=0, step=1)
-    card_chg_amount = st.number_input("Charge Amount (Card)", min_value=0.0, value=0.0, step=0.01)
+    col1, col2 = st.columns(2)
+    with col1:
+        raw_file = st.file_uploader("1. Upload Raw Ticket Data", type=["xlsx", "xls"], key="afc_raw")
+    with col2:
+        st.info("Using default template: **TAP Template.xlsx**")
+        template_file = st.file_uploader("Optional: Override Default Template", type=["xlsx"], key="afc_temp")
 
-    st.subheader("Daily Ticket Sales")
-    ticket_sale_count = st.number_input("Ticket Sale Count", min_value=0, value=0, step=1)
-    ticket_sale_amount = st.number_input("Ticket Sale Amount", min_value=0.0, value=0.0, step=0.01)
+    # Determine which template to use (uploaded override vs. local default)
+    default_template = "TAP Template.xlsx"
+    active_template = template_file if template_file else (default_template if os.path.exists(default_template) else None)
 
-    st.subheader("QR Mobile")
-    qr_count = st.number_input("Total QR Tickets", min_value=0, value=0, step=1)
+    if raw_file is not None:
+        if active_template is None:
+            st.error(f"Default template '{default_template}' not found in the app folder. Please upload it manually.")
+        else:
+            try:
+                # 1. Process Raw Data
+                df = pd.read_excel(raw_file, header=2)
+                df['TIME'] = pd.to_datetime(df['TIME'])
+                df['Hour_Int'] = df['TIME'].dt.hour
+                
+                def adjust_hour(row):
+                    hr = row['Hour_Int']
+                    station = row['STATION NAME']
+                    if station in TARGET_STATIONS:
+                        if hr < start_hr:
+                            return start_hr                   
+                        elif hr >= end_hr:
+                            return max(start_hr, end_hr - 1)  
+                    return hr
+                    
+                df['Adjusted_Hour'] = df.apply(adjust_hour, axis=1)
+                df = df[(df['Adjusted_Hour'] >= start_hr) & (df['Adjusted_Hour'] < end_hr)]
+                
+                hourly_counts = df.groupby(['STATION NAME', 'Adjusted_Hour']).size().reset_index(name='Count')
+                
+                # 2. Process Template
+                wb = openpyxl.load_workbook(active_template)
+                ws = wb.active
+                
+                station_col_map = {}
+                for col_idx in range(1, ws.max_column + 1):
+                    cell_value = ws.cell(row=2, column=col_idx).value
+                    if cell_value and isinstance(cell_value, str):
+                        station_name = cell_value.strip()
+                        for offset in range(3):
+                            if ws.cell(row=3, column=col_idx + offset).value == "AFC":
+                                station_col_map[station_name] = col_idx + offset
+                                break
+                                
+                row_map = {h: h - 1 for h in range(start_hr, end_hr)}
+                
+                for st_name, col_idx in station_col_map.items():
+                    for h, row_idx in row_map.items():
+                        safe_write(ws, row_idx, col_idx, 0)
+                        
+                for _, row in hourly_counts.iterrows():
+                    st_name = row['STATION NAME']
+                    hr = row['Adjusted_Hour']
+                    count = row['Count']
+                    
+                    if st_name in station_col_map and hr in row_map:
+                        safe_write(ws, row_map[hr], station_col_map[st_name], count)
+                
+                # 3. Export
+                buffer = io.BytesIO()
+                wb.save(buffer)
+                buffer.seek(0)
+                
+                st.success("AFC Template successfully populated!")
+                with st.expander("Preview Extracted Data (Raw)"):
+                    st.dataframe(hourly_counts)
+                    
+                st.download_button(
+                    label="Download Filled AFC Report",
+                    data=buffer,
+                    file_name="Filled_AFC_Ridership_Report.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
+                st.info("Ensure the template structure matches the expected format.")
 
-with col3:
-    st.subheader("Orange Line Metro")
-    olm_riders = st.number_input("Total Riders", min_value=0, value=0, step=1)
-    olm_revenue = st.number_input("Total Revenue", min_value=0.0, value=0.0, step=0.01)
-    olm_sales = st.number_input("Total Sales", min_value=0.0, value=0.0, step=0.01)
 
-st.divider()
+# ==========================================
+# TOOL 2: KENTKART VALIDATION REPORT
+# ==========================================
+elif app_mode == "Kentkart Validation Report":
+    st.subheader("Kentkart Validation - Template Filler")
+    st.write("Upload your raw Kentkart data. The app will automatically use the default 'KK Template.xlsx'.")
 
-# ================= CALCULATIONS =================
-qr_amount = qr_count * 50
-grand_total_riders = olm_riders + qr_count + ticket_sale_count
-grand_total_sales = olm_sales + qr_amount + ticket_sale_amount
-feeder_routes_riders = qr_count + ticket_sale_count
+    st.sidebar.header("Kentkart Settings")
+    time_range = st.sidebar.slider(
+        "Select Reporting Hours", 
+        min_value=0, max_value=24, value=(7, 18), format="%d:00", key="kentkart_slider"
+    )
+    start_hr, end_hr = time_range
 
-# ================= REPORTS =================
-st.header("Generated Reports")
-st.info("Hover over the top right corner of the text boxes below and click the 'Copy' icon to copy the reports to your clipboard.")
+    col1, col2 = st.columns(2)
+    with col1:
+        raw_file = st.file_uploader("1. Upload Raw Kentkart Data", type=["xlsx", "xls"], key="kk_raw")
+    with col2:
+        st.info("Using default template: **KK Template.xlsx**")
+        template_file = st.file_uploader("Optional: Override Default Template", type=["xlsx"], key="kk_temp")
 
-tab1, tab2 = st.tabs(["Main Template", "Short Summary"])
+    # Determine which template to use (uploaded override vs. local default)
+    default_template = "KK Template.xlsx"
+    active_template = template_file if template_file else (default_template if os.path.exists(default_template) else None)
 
-with tab1:
-    main_template = f"""*General Statistics - EV & HEV Buses*
-Date: {date_val}
-Day: {day_str}
-*Daily Boarding*
-Daily Count: {fmt(ev_daily_count)}
-Daily Amount: {fmt(ev_daily_amount)}
-*Daily Bus Count*
-Total Bus: {fmt(total_bus)}
-Working Buses: {fmt(working_bus)}
-*Daily MST Card Charge Info*
-MST Card Charge Count: {fmt(mst_count)}
-MST Card Charge Amount: {fmt(mst_amount)}
-MST Card Balance Amount: {fmt(mst_balance)}
-*Daily Card Charge*
-Daily Card Charge Count: {fmt(card_chg_count)}
-Daily Card Charge Amount: {fmt(card_chg_amount)}
-*Daily Ticket Sales*
-Total Tickets Sale Count: {fmt(ticket_sale_count)}
-Total Tickets Sale Amount: {fmt(ticket_sale_amount)}
-*QR Mobile*
-Total QR Tickets: {fmt(qr_count)}
-Total QR Tickets Amount: {fmt(qr_amount)}
-*General Statistics - Orange Line Metro*
-Date: {date_val}
-Day: {day_str}
-Total Riders: {fmt(olm_riders)}
-Total Revenue: {fmt(olm_revenue)}
-Total Sales: {fmt(olm_sales)}
-*Grand Total*
-Total Ridership Count: {fmt(grand_total_riders)}
-Total Sale Amount: {fmt(grand_total_sales)}"""
-
-    st.code(main_template, language=None)
-
-with tab2:
-    summary_template = f"""*Ridership Details*
-Date: {date_val}
-Day: {day_str} 
-
-*Orange Line Metro* = {fmt(olm_riders)}
-*Feeder Routes* = {fmt(feeder_routes_riders)}
-
-*Total Ridership* = {fmt(grand_total_riders)}
-*Total Sale Amount* = {fmt(grand_total_sales)}"""
-
-    st.code(summary_template, language=None)
-
-st.divider()
-
-# ================= ROW 3: QUICK CONVERTER =================
-st.header("Quick Converter")
-st.write("Paste your Main Format text here to extract and generate a Short Summary.")
-
-pasted_text = st.text_area("Paste Main Report Here", height=150)
-
-if st.button("Convert to Short Summary", type="primary"):
-    if not pasted_text.strip():
-        st.warning("Please paste the Main Format text into the box first.")
-    else:
-        try:
-            # Use Regular Expressions to find the needed numbers
-            date_match = re.search(r"Date:\s*(.+)", pasted_text)
-            day_match = re.search(r"Day:\s*(.+)", pasted_text)
-            olm_match = re.search(r"Total Riders:\s*([\d,]+)", pasted_text)
-            total_riders_match = re.search(r"Total Ridership Count:\s*([\d,]+)", pasted_text)
-            total_sales_match = re.search(r"Total Sale Amount:\s*([\d,\.]+)", pasted_text)
-
-            if not (date_match and olm_match and total_riders_match and total_sales_match and day_match):
-                raise ValueError("Missing required fields in pasted text.")
-
-            # Extract the raw strings
-            c_date_val = date_match.group(1).strip()
-            c_day_val = day_match.group(1).strip()
-            c_olm_str = olm_match.group(1)
-            c_total_riders_str = total_riders_match.group(1)
-            c_total_sales_str = total_sales_match.group(1)
-
-            # Convert riders to integers to calculate the feeder routes
-            c_olm_riders = int(c_olm_str.replace(",", ""))
-            c_total_riders = int(c_total_riders_str.replace(",", ""))
-            
-            # Feeder Routes = Grand Total Ridership - Orange Line Riders
-            c_feeder_routes = c_total_riders - c_olm_riders
-
-            # Build the new short format
-            converted_summary = f"""*Ridership Details*
-Date: {c_date_val}
-Day: {c_day_val}
-
-*Orange Line Metro* = {c_olm_riders:,}
-*Feeder Routes* = {c_feeder_routes:,}
-
-*Total Ridership* = {c_total_riders:,}
-*Total Sale Amount* = {c_total_sales_str}"""
-
-            st.success("Converted successfully! Use the copy icon in the top right of the box below.")
-            st.code(converted_summary, language=None)
-
-        except Exception as e:
-            st.error("Parse Error: Could not understand the pasted text. Please make sure you are pasting the EXACT format generated by the Main Template.")
+    if raw_file is not None:
+        if active_template is None:
+            st.error(f"Default template '{default_template}' not found in the app folder. Please upload it manually.")
+        else:
+            try:
+                # 1. Process Raw Data
+                df = pd.read_excel(raw_file, header=1)
+                df.columns = df.columns.str.strip()
+                
+                target_col = 'Diplomatic Single Ticket QR'
+                if target_col not in df.columns:
+                    st.error(f"Column '{target_col}' not found. Available columns are: " + ", ".join(df.columns))
+                    st.stop()
+                    
+                df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
+                df['Trip Start Date Time'] = pd.to_datetime(
+                    df['Trip Start Date Time'].astype(str).str.strip(), 
+                    errors='coerce'
+                )
+                df = df.dropna(subset=['Trip Start Date Time'])
+                df['Hour_Int'] = df['Trip Start Date Time'].dt.hour
+                
+                def adjust_hour(hr):
+                    if hr < start_hr:
+                        return start_hr                   
+                    elif hr >= end_hr:
+                        return max(start_hr, end_hr - 1)  
+                    return hr
+                    
+                df['Adjusted_Hour'] = df['Hour_Int'].apply(adjust_hour)
+                
+                def format_plate(p):
+                    p = str(p).strip()
+                    if p.startswith('EV') and '-' not in p:
+                        return p.replace('EV', 'EV-')
+                    return p
+                    
+                if 'Plate' in df.columns:
+                    df['Formatted_Plate'] = df['Plate'].apply(format_plate)
+                else:
+                    st.error("Column 'Plate' not found.")
+                    st.stop()
+                
+                # --- NEW FEATURE: Get the last trip start time for each bus ---
+                last_trip_times = df.groupby('Formatted_Plate')['Trip Start Date Time'].max().reset_index()
+                last_trip_times.rename(columns={'Formatted_Plate': 'Bus Plate', 'Trip Start Date Time': 'Last Trip Start Time'}, inplace=True)
+                
+                # Filter data for hourly counts to ensure it stays strictly within the selected limits
+                filtered_df = df[(df['Adjusted_Hour'] >= start_hr) & (df['Adjusted_Hour'] < end_hr)]
+                hourly_counts = filtered_df.groupby(['Formatted_Plate', 'Adjusted_Hour'])[target_col].sum().reset_index(name='Count')
+                unique_plates = sorted(filtered_df['Formatted_Plate'].dropna().unique())
+                
+                # 2. Process Template
+                wb = openpyxl.load_workbook(active_template)
+                ws = wb.active
+                
+                row_map = {h: h - 2 for h in range(start_hr, end_hr)}
+                plate_col_map = {}
+                
+                for i, plate in enumerate(unique_plates):
+                    # --- UPDATED: 4 columns per bus ---
+                    # (e.g., Entered, Exited, Dispatch, Validation)
+                    base_col = 2 + (i * 4)  
+                    val_col = base_col + 3  # Validation is now the 4th column in the block
+                    
+                    plate_col_map[plate] = val_col
+                    
+                    # Assuming row 2 is still where the plate number goes
+                    safe_write(ws, 2, base_col, plate)
+                    
+                    for hr, row_idx in row_map.items():
+                        safe_write(ws, row_idx, val_col, 0)
+                
+                # ==========================================
+                # ---> THIS IS THE MISSING BLOCK! <---
+                # ==========================================
+                for _, row in hourly_counts.iterrows():
+                    plate = row['Formatted_Plate']
+                    hr = row['Adjusted_Hour']
+                    count = row['Count']
+                    
+                    if plate in plate_col_map and hr in row_map:
+                        safe_write(ws, row_map[hr], plate_col_map[plate], count)
+                # ==========================================
+                        
+                # 3. Export
+                buffer = io.BytesIO()
+                wb.save(buffer)
+                buffer.seek(0)
+                
+                # 3. Export
+                buffer = io.BytesIO()
+                wb.save(buffer)
+                buffer.seek(0)
+                
+                st.success("Validation Template successfully populated!")
+                with st.expander("Preview Extracted Data (Ticket Sums)"):
+                    st.dataframe(hourly_counts, use_container_width=True)
+                    
+                # --- DISPLAY NEW TABLE ---
+                with st.expander("Last Trip Start Times per Bus", expanded=True):
+                    st.write("You can click and drag to copy this table, or hover over it to download as CSV.")
+                    st.dataframe(last_trip_times, use_container_width=True)
+                    
+                st.download_button(
+                    label="Download Filled Validation Report",
+                    data=buffer,
+                    file_name="Filled_Validation_Ridership_Report.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                
+            except KeyError as e:
+                st.error(f"Missing expected column in raw data: {e}")
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
