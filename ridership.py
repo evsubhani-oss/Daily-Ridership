@@ -202,7 +202,7 @@ elif app_mode == "Kentkart Validation Report":
                 df = pd.read_excel(raw_file, header=1)
                 df.columns = df.columns.str.strip()
                 
-                target_col = 'Diplomatic Single Ticket QR'
+                target_col = 'Total Count'
                 if target_col not in df.columns:
                     st.error(f"Column '{target_col}' not found. Available columns are: " + ", ".join(df.columns))
                     st.stop()
