@@ -186,7 +186,7 @@ elif app_mode == "Kentkart Validation Report":
     with col1:
         raw_file = st.file_uploader("1. Upload Raw Kentkart Data", type=["xlsx", "xls"], key="kk_raw")
     with col2:
-        st.info("Using default template: **KK Template.xlsx**")
+        st.info("ٹیمپلیٹ شامل کر دی گئی ہے: **KK Template.xlsx**")
         template_file = st.file_uploader("Optional: Override Default Template", type=["xlsx"], key="kk_temp")
 
     # Determine which template to use (uploaded override vs. local default)
