@@ -42,42 +42,41 @@ def set_background(image_file):
         """
         st.markdown(css, unsafe_allow_html=True)
     except FileNotFoundError:
-        st.warning(f"Background image '{image_file}' not found.")
+        st.warning(f"پس منظر کی تصویر '{image_file}' نہیں ملی۔")
 
 # --- APP SETUP ---
-st.set_page_config(layout="wide", page_title="Transit Operations Report Generator")
+st.set_page_config(layout="wide", page_title="ٹرانزٹ آپریشنز رپورٹ جنریٹر")
 
 # --- CALL THE BACKGROUND FUNCTION HERE ---
 # Place your image or gif in the same folder as this script.
 # Uncomment the line below and change "your_background.gif" to your actual file name.
-set_background("your_gif.gif") 
+# set_background("your_gif.gif") 
 
-st.title("Transit Operations Report Generator")
+st.title("ٹرانزٹ آپریشنز رپورٹ جنریٹر")
 
-# ... [The rest of your code remains exactly the same below this point] ...
 # --- SIDEBAR NAVIGATION ---
-
-st.sidebar.header("Navigation")
+st.sidebar.header("نیویگیشن")
 app_mode = st.sidebar.radio(
-    "Select Tool to Run:",
-    ["Kentkart Validation Report","Station AFC Report"]
+    "چلانے کے لیے ٹول منتخب کریں:",
+    ["اسٹیشن اے ایف سی رپورٹ", "کینٹ کارٹ ویلیڈیشن رپورٹ"]
 )
 st.sidebar.divider()
 
 # ==========================================
 # TOOL 1: STATION AFC REPORT
 # ==========================================
-if app_mode == "Station AFC Report":
-    st.subheader("Hourly Station Ticket Report - Template Filler")
-    st.write("Upload your raw ticket data. The app will automatically use the default 'TAP Template.xlsx'.")
+if app_mode == "اسٹیشن اے ایف سی رپورٹ":
+    st.subheader("گھنٹہ وار اسٹیشن ٹکٹ رپورٹ - ٹیمپلیٹ فلر")
+    st.write("اپنا خام ٹکٹ ڈیٹا اپ لوڈ کریں۔ ایپ خود بخود ڈیفالٹ 'TAP Template.xlsx' استعمال کرے گی۔")
 
-    st.sidebar.header("AFC Report Settings")
+    st.sidebar.header("اے ایف سی رپورٹ کی ترتیبات")
     time_range = st.sidebar.slider(
-        "Select Reporting Hours", 
+        "رپورٹنگ کے اوقات منتخب کریں", 
         min_value=0, max_value=24, value=(6, 22), format="%d:00", key="afc_slider"
     )
     start_hr, end_hr = time_range
 
+    # Keeping original names for code functionality
     TARGET_STATIONS = [
         "Faiz Ahmad Faiz", "G-13", "Golra More", 
         "N-5", "NHA", "NUST", "Police Foundation", "G-10"
@@ -85,10 +84,10 @@ if app_mode == "Station AFC Report":
 
     col1, col2 = st.columns(2)
     with col1:
-        raw_file = st.file_uploader("1. Upload Raw Ticket Data", type=["xlsx", "xls"], key="afc_raw")
+        raw_file = st.file_uploader("1. خام ٹکٹ ڈیٹا اپ لوڈ کریں", type=["xlsx", "xls"], key="afc_raw")
     with col2:
-        st.info("Using default template: **TAP Template.xlsx**")
-        template_file = st.file_uploader("Optional: Override Default Template", type=["xlsx"], key="afc_temp")
+        st.info("ڈیفالٹ ٹیمپلیٹ استعمال ہو رہا ہے: **TAP Template.xlsx**")
+        template_file = st.file_uploader("اختیاری: ڈیفالٹ ٹیمپلیٹ تبدیل کریں", type=["xlsx"], key="afc_temp")
 
     # Determine which template to use (uploaded override vs. local default)
     default_template = "TAP Template.xlsx"
@@ -96,7 +95,7 @@ if app_mode == "Station AFC Report":
 
     if raw_file is not None:
         if active_template is None:
-            st.error(f"Default template '{default_template}' not found in the app folder. Please upload it manually.")
+            st.error(f"ایپ فولڈر میں ڈیفالٹ ٹیمپلیٹ '{default_template}' نہیں ملا۔ براہ کرم اسے دستی طور پر اپ لوڈ کریں۔")
         else:
             try:
                 # 1. Process Raw Data
@@ -152,42 +151,42 @@ if app_mode == "Station AFC Report":
                 wb.save(buffer)
                 buffer.seek(0)
                 
-                st.success("AFC Template successfully populated!")
-                with st.expander("Preview Extracted Data (Raw)"):
+                st.success("اے ایف سی ٹیمپلیٹ کامیابی سے بھر گئی ہے!")
+                with st.expander("نکالے گئے ڈیٹا کا پیش نظارہ (خام)"):
                     st.dataframe(hourly_counts)
                     
                 st.download_button(
-                    label="Download Filled AFC Report",
+                    label="بھری ہوئی اے ایف سی رپورٹ ڈاؤن لوڈ کریں",
                     data=buffer,
                     file_name="Filled_AFC_Ridership_Report.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
             except Exception as e:
-                st.error(f"An error occurred: {e}")
-                st.info("Ensure the template structure matches the expected format.")
+                st.error(f"ایک خامی پیش آ گئی: {e}")
+                st.info("یقینی بنائیں کہ ٹیمپلیٹ کی ساخت متوقع فارمیٹ سے ملتی ہے۔")
 
 
 # ==========================================
 # TOOL 2: KENTKART VALIDATION REPORT
 # ==========================================
-elif app_mode == "Kentkart Validation Report":
-    st.subheader("Kentkart Validation - Template Filler")
-    st.write("Upload your raw Kentkart data. The app will automatically use the default 'KK Template.xlsx'.")
+elif app_mode == "کینٹ کارٹ ویلیڈیشن رپورٹ":
+    st.subheader("کینٹ کارٹ ویلیڈیشن - ٹیمپلیٹ فلر")
+    st.write("اپنا خام کینٹ کارٹ ڈیٹا اپ لوڈ کریں۔ ایپ خود بخود ڈیفالٹ 'KK Template.xlsx' استعمال کرے گی۔")
 
-    st.sidebar.header("Kentkart Settings")
+    st.sidebar.header("کینٹ کارٹ کی ترتیبات")
     time_range = st.sidebar.slider(
-        "Select Reporting Hours", 
+        "رپورٹنگ کے اوقات منتخب کریں", 
         min_value=0, max_value=24, value=(7, 18), format="%d:00", key="kentkart_slider"
     )
     start_hr, end_hr = time_range
 
     col1, col2 = st.columns(2)
     with col1:
-        raw_file = st.file_uploader("1. Upload Raw Kentkart Data", type=["xlsx", "xls"], key="kk_raw")
+        raw_file = st.file_uploader("1. خام کینٹ کارٹ ڈیٹا اپ لوڈ کریں", type=["xlsx", "xls"], key="kk_raw")
     with col2:
         st.info("ٹیمپلیٹ شامل کر دی گئی ہے: **KK Template.xlsx**")
-        template_file = st.file_uploader("Optional: Override Default Template", type=["xlsx"], key="kk_temp")
+        template_file = st.file_uploader("اختیاری: ڈیفالٹ ٹیمپلیٹ تبدیل کریں", type=["xlsx"], key="kk_temp")
 
     # Determine which template to use (uploaded override vs. local default)
     default_template = "KK Template.xlsx"
@@ -195,7 +194,7 @@ elif app_mode == "Kentkart Validation Report":
 
     if raw_file is not None:
         if active_template is None:
-            st.error(f"Default template '{default_template}' not found in the app folder. Please upload it manually.")
+            st.error(f"ایپ فولڈر میں ڈیفالٹ ٹیمپلیٹ '{default_template}' نہیں ملا۔ براہ کرم اسے دستی طور پر اپ لوڈ کریں۔")
         else:
             try:
                 # 1. Process Raw Data
@@ -204,7 +203,7 @@ elif app_mode == "Kentkart Validation Report":
                 
                 target_col = 'Total Count'
                 if target_col not in df.columns:
-                    st.error(f"Column '{target_col}' not found. Available columns are: " + ", ".join(df.columns))
+                    st.error(f"کالم '{target_col}' نہیں ملا۔ دستیاب کالم یہ ہیں: " + ", ".join(df.columns))
                     st.stop()
                     
                 df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
@@ -233,7 +232,7 @@ elif app_mode == "Kentkart Validation Report":
                 if 'Plate' in df.columns:
                     df['Formatted_Plate'] = df['Plate'].apply(format_plate)
                 else:
-                    st.error("Column 'Plate' not found.")
+                    st.error("کالم 'Plate' نہیں ملا۔")
                     st.stop()
                 
                 # --- NEW FEATURE: Get the last trip start time for each bus ---
@@ -283,28 +282,23 @@ elif app_mode == "Kentkart Validation Report":
                 wb.save(buffer)
                 buffer.seek(0)
                 
-                # 3. Export
-                buffer = io.BytesIO()
-                wb.save(buffer)
-                buffer.seek(0)
-                
-                st.success("Validation Template successfully populated!")
-                with st.expander("Preview Extracted Data (Ticket Sums)"):
+                st.success("ویلیڈیشن ٹیمپلیٹ کامیابی سے بھر گئی ہے!")
+                with st.expander("نکالے گئے ڈیٹا کا پیش نظارہ (ٹکٹوں کا مجموعہ)"):
                     st.dataframe(hourly_counts, use_container_width=True)
                     
                 # --- DISPLAY NEW TABLE ---
-                with st.expander("Last Trip Start Times per Bus", expanded=True):
-                    st.write("You can click and drag to copy this table, or hover over it to download as CSV.")
+                with st.expander("ہر بس کے آخری سفر کے آغاز کا وقت", expanded=True):
+                    st.write("آپ اس ٹیبل کو کاپی کرنے کے لیے کلک اور ڈریگ کر سکتے ہیں، یا CSV کے طور پر ڈاؤن لوڈ کرنے کے لیے اس پر ہوور (hover) کر سکتے ہیں۔")
                     st.dataframe(last_trip_times, use_container_width=True)
                     
                 st.download_button(
-                    label="Download Filled Validation Report",
+                    label="بھری ہوئی ویلیڈیشن رپورٹ ڈاؤن لوڈ کریں",
                     data=buffer,
                     file_name="Filled_Validation_Ridership_Report.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
             except KeyError as e:
-                st.error(f"Missing expected column in raw data: {e}")
+                st.error(f"خام ڈیٹا میں متوقع کالم غائب ہے: {e}")
             except Exception as e:
-                st.error(f"An error occurred: {e}")
+                st.error(f"ایک خامی پیش آ گئی: {e}")
